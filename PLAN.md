@@ -114,13 +114,14 @@ Goal: prove the full pipe end-to-end on one document type with deterministic sta
 - [x] `GET /document/:id` (status + progress + exports), `GET /download/pdf/:id` (presigned redirect)
 - [x] Real async run verified: skewed/noisy/shadowed photo → deskewed clean PDF (visual before/after confirmed)
 
-### M1.2 — OCR + text-based reconstruction (NEXT)
-- [ ] Worker stage 2 — **OCR** (PaddleOCR): text + bounding boxes + confidence, geometry preserved
-- [ ] OCR-driven background removal (clean to pure white using text mask)
-- [ ] Searchable PDF (text layer) + ordered text blocks → semantic HTML → PDF
-- [ ] Web: upload form, processing/poll screen, result + PDF download
+### M1.2 — OCR + text-based reconstruction (code-complete, pending live verify)
+- [x] Worker stage 2 — **OCR** (PaddleOCR): text + boxes + confidence, geometry preserved (`worker/pipeline/ocr.py`; lazy import, degrades to pass-through if paddle is unavailable so the job still completes)
+- [x] OCR-driven background removal — whiten everything outside the (dilated) text mask to pure white (`whiten_background`)
+- [x] **Searchable PDF**: restored image + invisible, per-line OCR text layer, horizontally scaled to its box (`reconstruct.searchable_pdf`, reportlab); falls back to image-only PDF when OCR is empty
+- [ ] ordered text blocks → **semantic HTML → PDF/DOCX** — deferred to M2 (rich, structure-aware reconstruction)
+- [x] Web: upload (drag-drop/click) → live stage tracker (poll `GET /document/:id`) → result + PDF download (`apps/web/app/_components/Uploader.tsx`)
 
-**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back. **(M1.1 met for image-PDF; M1.2 adds the searchable text layer + web UI.)**
+**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back. **(M1.1 met for image-PDF; M1.2 adds the searchable text layer + web UI — code-complete; OCR text layer needs a live run in the Docker worker to confirm.)**
 
 ---
 
@@ -213,8 +214,9 @@ Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear,
 
 ## Current status
 
-- **Active milestone:** M1.2 — OCR + text reconstruction + web UI.
+- **Active milestone:** M1.2 — OCR + searchable PDF + web UI (**code-complete**, pending live OCR run).
 - **M0 DONE.** **M1.1 DONE** (verified end-to-end: upload → Redis → worker OpenCV restore → PDF → presigned download; visual before/after confirmed).
+- **M1.2 implemented:** PaddleOCR stage (text+boxes+confidence, geometry preserved), text-mask background whitening, searchable PDF (image + invisible text layer via reportlab), and the web upload→poll→download flow. Worker modules byte-compile + `ruff` clean; web `tsc --noEmit` green.
 - **Running locally now:** web :3000, api :8000, worker (Redis consumer), Postgres :5432, Redis + MinIO (docker).
-- **Next action:** M1.2 — PaddleOCR stage (Docker-Linux worker to dodge Python 3.14 wheel gaps) + searchable PDF + the upload/processing/result web screens.
-- **Tooling note:** worker AI stack (PaddleOCR) should run in the Docker worker image (python:3.12-slim) — native Windows + Python 3.14 lacks reliable wheels for paddle.
+- **Next action:** bring up the Docker worker (`paddleocr` + `reportlab` now in `apps/worker/pyproject.toml`) and run a real photo through it to confirm the OCR text layer is selectable and the whitened background looks clean; then start M2 (Qwen2.5-VL understanding + rich HTML/DOCX/JSON reconstruction).
+- **Tooling note:** the worker AI stack (PaddleOCR) runs in the Docker worker image (python:3.12-slim) — native Windows + Python 3.14 lacks reliable wheels for paddle. The OCR stage degrades to a pass-through if paddle can't load, so the API/worker still run natively for non-OCR iteration.

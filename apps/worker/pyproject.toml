@@ -16,8 +16,11 @@ dependencies = [
     "pdfplumber>=0.11.0",
     "pypdf>=5.0.0",
     "python-docx>=1.1.0",
-    # OCR (M1) — paddleocr pulls paddlepaddle; pin in lockfile during M1
-    # "paddleocr>=2.8.0",
+    # Searchable PDF: invisible OCR text layer over the restored image (M1.2)
+    "reportlab>=4.2.0",
+    # OCR (M1.2) — paddleocr pulls paddlepaddle. Pin to 2.x for the classic
+    # `.ocr(img, cls=True)` API the worker is written against.
+    "paddleocr>=2.8.0,<3.0.0",
     # VL client talks to self-hosted Qwen via OpenAI-compatible vLLM endpoint (M2)
     "openai>=1.50.0",
     "weasyprint>=62.0",
