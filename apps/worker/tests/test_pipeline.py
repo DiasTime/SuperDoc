@@ -11,16 +11,19 @@ Runnable directly (`python tests/test_pipeline.py`) or under pytest.
 from __future__ import annotations
 
 import io
+import unittest
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from worker.pipeline.ocr import run_ocr, whiten_background
 from worker.pipeline.reconstruct import image_to_pdf, searchable_pdf
 from worker.pipeline.restoration import restore
 
 LINES = ["INVOICE No. 2026-0042", "Billed to: Acme Corp", "Total due: $1,337.00"]
+
+_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 
 def _bad_photo() -> bytes:
@@ -51,6 +54,21 @@ def _decode_gray(b: bytes) -> np.ndarray:
     arr = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_GRAYSCALE)
     assert arr is not None
     return arr
+
+
+def _clean_render() -> bytes:
+    """A crisp, large-font page — what OCR should read near-perfectly."""
+    try:
+        font = ImageFont.truetype(_FONT, 40)
+    except OSError:
+        font = ImageFont.load_default()
+    page = Image.new("L", (1000, 700), color=255)
+    draw = ImageDraw.Draw(page)
+    for i, line in enumerate(LINES):
+        draw.text((80, 80 + i * 150), line, fill=10, font=font)
+    ok, buf = cv2.imencode(".png", np.array(page))
+    assert ok
+    return buf.tobytes()
 
 
 def _fake_words() -> list[dict]:
@@ -107,6 +125,21 @@ def test_searchable_pdf_text_layer_is_extractable():
         assert line in text, f"missing from text layer: {line!r}\n--- got ---\n{text}"
 
 
+def test_real_ocr_reads_text_when_available():
+    """Real PaddleOCR recognition. Runs for real where paddle + its models are
+    present (Docker worker / CI with model-download egress); skips cleanly in
+    sandboxes where the weights can't be fetched, so the suite stays green
+    everywhere while still asserting recognition where it can."""
+    result = run_ocr(_clean_render())
+    if not result["words"]:
+        raise unittest.SkipTest("PaddleOCR engine/models unavailable in this environment")
+    joined = " ".join(w["text"] for w in result["words"]).upper()
+    hits = sum(token in joined for token in ("INVOICE", "ACME", "TOTAL"))
+    assert hits >= 2, f"weak recognition (hits={hits}): {joined!r}"
+    assert result["languages"] == ["en"]
+    assert all(0.0 <= w["confidence"] <= 1.0 for w in result["words"])
+
+
 def test_image_only_pdf_fallback():
     pdf = image_to_pdf(restore(_bad_photo()))
     assert pdf[:5] == b"%PDF-"
@@ -117,13 +150,17 @@ def test_image_only_pdf_fallback():
 
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
+    failed = skipped = 0
     for t in tests:
         try:
             t()
             print(f"PASS  {t.__name__}")
+        except unittest.SkipTest as exc:
+            skipped += 1
+            print(f"SKIP  {t.__name__}: {exc}")
         except Exception as exc:  # noqa: BLE001
             failed += 1
             print(f"FAIL  {t.__name__}: {exc}")
-    print(f"\n{len(tests) - failed}/{len(tests)} passed")
+    passed = len(tests) - failed - skipped
+    print(f"\n{passed} passed, {skipped} skipped, {failed} failed")
     raise SystemExit(1 if failed else 0)
