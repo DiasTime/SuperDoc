@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { JOB_STAGES } from "@docres/shared-types";
+import Uploader from "./_components/Uploader";
 
 export default function Home() {
   return (
@@ -46,14 +47,9 @@ export default function Home() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.18 }}
-          className="mt-10 flex items-center gap-3"
+          className="flex w-full flex-col items-center"
         >
-          <button className="rounded-lg bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-white/90">
-            Upload a document
-          </button>
-          <button className="rounded-lg border border-white/15 px-5 py-3 text-sm font-medium text-white/80 transition hover:bg-white/5">
-            See how it works
-          </button>
+          <Uploader />
         </motion.div>
 
         {/* pipeline preview */}
@@ -77,7 +73,7 @@ export default function Home() {
       </section>
 
       <footer className="mt-32 border-t border-white/5 py-8 text-center text-xs text-white/30">
-        Document Resurrection AI — M0 foundation. See PLAN.md for the roadmap.
+        Document Resurrection AI — M1.2: OCR + searchable PDF. See PLAN.md for the roadmap.
       </footer>
     </main>
   );
