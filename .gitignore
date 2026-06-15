@@ -1,0 +1,42 @@
+# Node
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Models (large, downloaded separately)
+models/
+*.safetensors
+*.gguf
+*.bin
+
+# Data / artifacts
+data/
+uploads/
+artifacts/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

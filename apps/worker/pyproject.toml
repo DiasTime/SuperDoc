@@ -1,0 +1,34 @@
+[project]
+name = "docres-worker"
+version = "0.0.0"
+description = "Document Resurrection AI — processing pipeline worker"
+requires-python = ">=3.12"
+dependencies = [
+    "redis>=5.0.0",
+    "boto3>=1.35.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    # Image + document processing (used from M1 onward)
+    "opencv-python-headless>=4.10.0",
+    "pillow>=10.4.0",
+    "numpy>=2.1.0",
+    "pdfplumber>=0.11.0",
+    "pypdf>=5.0.0",
+    "python-docx>=1.1.0",
+    # OCR (M1) — paddleocr pulls paddlepaddle; pin in lockfile during M1
+    # "paddleocr>=2.8.0",
+    # VL client talks to self-hosted Qwen via OpenAI-compatible vLLM endpoint (M2)
+    "openai>=1.50.0",
+    "weasyprint>=62.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "pytest>=8.3.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

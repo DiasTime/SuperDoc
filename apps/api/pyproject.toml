@@ -1,0 +1,26 @@
+[project]
+name = "docres-api"
+version = "0.0.0"
+description = "Document Resurrection AI — FastAPI gateway"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "redis>=5.0.0",
+    "boto3>=1.35.0",
+    "psycopg[binary]>=3.2.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "pytest>=8.3.0",
+    "httpx>=0.27.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

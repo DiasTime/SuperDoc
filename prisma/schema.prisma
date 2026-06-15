@@ -1,0 +1,140 @@
+// Document Resurrection AI — database schema (source of truth).
+// Run: pnpm prisma:generate && pnpm prisma:migrate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Plan {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+enum JobStatus {
+  QUEUED
+  RESTORING // image enhancement / perspective correction
+  OCR // text extraction
+  UNDERSTANDING // Qwen2.5-VL structuring
+  RECONSTRUCTING // PDF / DOCX / JSON generation
+  COMPLETED
+  FAILED
+}
+
+enum DocumentType {
+  UNKNOWN
+  CONTRACT
+  INVOICE
+  ACT
+  CERTIFICATE
+  PASSPORT
+  ID_CARD
+  FORM
+  COMMERCIAL_OFFER
+}
+
+enum ExportFormat {
+  PDF
+  DOCX
+  JSON
+}
+
+// ─────────────────────────── Models ───────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents    Document[]
+  subscription Subscription?
+
+  @@map("users")
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  plan               Plan      @default(FREE)
+  docsUsedThisPeriod Int       @default(0)
+  periodStart        DateTime  @default(now())
+  periodEnd          DateTime?
+  stripeCustomerId   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  userId       String?
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  // object-store key for the raw upload
+  sourceKey    String
+  pageCount    Int?
+  docType      DocumentType @default(UNKNOWN)
+  title        String?
+  summary      String?
+  // structured representation produced by the understanding stage
+  structure    Json?
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user    User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  job     ProcessingJob?
+  exports Export[]
+
+  @@index([userId])
+  @@index([docType])
+  @@map("documents")
+}
+
+model ProcessingJob {
+  id          String    @id @default(cuid())
+  documentId  String    @unique
+  status      JobStatus @default(QUEUED)
+  progress    Int       @default(0) // 0–100
+  error       String?
+  // per-stage timing + intermediate keys for debugging/observability
+  stageTimings Json?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("processing_jobs")
+}
+
+model Export {
+  id         String       @id @default(cuid())
+  documentId String
+  format     ExportFormat
+  // object-store key for the generated artifact
+  artifactKey String
+  sizeBytes  Int?
+  createdAt  DateTime     @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, format])
+  @@map("exports")
+}
