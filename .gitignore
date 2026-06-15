@@ -33,6 +33,7 @@ models/
 data/
 uploads/
 artifacts/
+.preview/
 *.log
 
 # OS / editor

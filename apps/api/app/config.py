@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Infra
     database_url: str = "postgresql://docres:docres_dev_password@postgres:5432/docres"
     redis_url: str = "redis://redis:6379/0"
+    queue_name: str = "docres:jobs"
 
     # Object storage
     s3_endpoint: str = "http://minio:9000"

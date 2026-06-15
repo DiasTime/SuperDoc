@@ -98,22 +98,29 @@ Goal: everything boots with `docker compose up`, even if endpoints are stubs.
 
 Goal: prove the full pipe end-to-end on one document type with deterministic stages.
 
-- [ ] Object storage client (presigned upload + artifact put/get) — MinIO/S3
-- [ ] `POST /upload` → store file, create `document` + `processing_job`
-- [ ] `POST /process/:id` → enqueue job
-- [ ] Worker stage 1 — **Image restoration** (OpenCV):
-  - [ ] auto-orient (EXIF) + grayscale path
-  - [ ] denoise (Non-Local Means / bilateral)
-  - [ ] shadow removal (background division)
-  - [ ] brightness/contrast normalization (CLAHE)
-  - [ ] document edge detection → perspective correction (4-point warp)
-  - [ ] auto-crop + deskew (Hough / min-area-rect)
+### M1.1 — async pipe + image restoration (DONE ✅, verified end-to-end)
+- [x] Object storage client (put/get + presigned download) — MinIO/S3 (`app/storage.py`, `worker/storage.py`)
+- [x] `POST /upload` → magic-byte MIME sniff + size limit → store file, create `document` + `processing_job`
+- [x] `POST /process/:id` → enqueue job (Redis)
+- [x] Worker stage 1 — **Image restoration** (OpenCV):
+  - [x] grayscale path
+  - [x] denoise (Non-Local Means)
+  - [x] shadow removal (background division)
+  - [x] contrast normalization (CLAHE) + white-point flatten
+  - [x] document edge detection → perspective correction (4-point warp)
+  - [x] deskew (projection-profile search — robust across OpenCV versions)
+  - [ ] auto-orient (EXIF) + auto-crop — deferred to M1.2
+- [x] Worker stage 4 — **Reconstruction (basic)**: restored page → clean PDF (Pillow)
+- [x] `GET /document/:id` (status + progress + exports), `GET /download/pdf/:id` (presigned redirect)
+- [x] Real async run verified: skewed/noisy/shadowed photo → deskewed clean PDF (visual before/after confirmed)
+
+### M1.2 — OCR + text-based reconstruction (NEXT)
 - [ ] Worker stage 2 — **OCR** (PaddleOCR): text + bounding boxes + confidence, geometry preserved
-- [ ] Worker stage 4 — **Reconstruction (basic)**: ordered text blocks → semantic HTML → PDF
-- [ ] `GET /document/:id` (status + result), `GET /download/pdf/:id`
+- [ ] OCR-driven background removal (clean to pure white using text mask)
+- [ ] Searchable PDF (text layer) + ordered text blocks → semantic HTML → PDF
 - [ ] Web: upload form, processing/poll screen, result + PDF download
 
-**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back.
+**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back. **(M1.1 met for image-PDF; M1.2 adds the searchable text layer + web UI.)**
 
 ---
 
@@ -206,7 +213,8 @@ Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear,
 
 ## Current status
 
-- **Active milestone:** M0 — Foundation (≈95% done)
-- **Verified live:** Postgres 18 + schema (5 tables); FastAPI `/health` 200; Next.js web on :3000; shared-types typecheck; git initialized.
-- **Remaining for M0:** Redis + MinIO via `docker compose up` (blocked on WSL install).
-- **Next action:** install WSL (`wsl --install`, admin, reboot) + Python 3.12 → `docker compose up` → begin M1 (upload → restore → OCR → PDF).
+- **Active milestone:** M1.2 — OCR + text reconstruction + web UI.
+- **M0 DONE.** **M1.1 DONE** (verified end-to-end: upload → Redis → worker OpenCV restore → PDF → presigned download; visual before/after confirmed).
+- **Running locally now:** web :3000, api :8000, worker (Redis consumer), Postgres :5432, Redis + MinIO (docker).
+- **Next action:** M1.2 — PaddleOCR stage (Docker-Linux worker to dodge Python 3.14 wheel gaps) + searchable PDF + the upload/processing/result web screens.
+- **Tooling note:** worker AI stack (PaddleOCR) should run in the Docker worker image (python:3.12-slim) — native Windows + Python 3.14 lacks reliable wheels for paddle.
