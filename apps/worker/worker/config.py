@@ -20,10 +20,23 @@ class Settings(BaseSettings):
     s3_bucket: str = "docres"
     s3_region: str = "us-east-1"
 
-    # Self-hosted Qwen2.5-VL 7B via OpenAI-compatible vLLM server
-    vl_model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"
-    vl_endpoint: str = "http://vllm:8001/v1"
+    # Document understanding (M2): Qwen-VL behind an OpenAI-compatible endpoint.
+    # Defaults target a local Ollama (`ollama pull qwen2.5vl`). Point vl_endpoint
+    # at a vLLM server for production throughput — the client code is identical.
+    # From inside the Docker worker the host's Ollama is host.docker.internal.
+    vl_backend: str = "ollama"  # "ollama" | "vllm" (both OpenAI-compatible)
+    vl_endpoint: str = "http://localhost:11434/v1"
+    vl_model_name: str = "qwen2.5vl"
+    vl_api_key: str = "ollama"  # Ollama ignores it; the OpenAI client needs a non-empty value
     vl_max_tokens: int = 4096
+    vl_timeout: float = 180.0  # 7B VL inference is slow on CPU / consumer GPUs
+    vl_enabled: bool = True  # set false to keep understanding a pass-through
+
+    # Image restoration tuning
+    restore_max_side: int = 3500  # working-resolution cap; higher = crisper small text
+    # "color" (default): keep real colours — stamps/signatures/photos — paper white.
+    # "gray": smooth greyscale.  "binary": crisp 1-bit B/W (pure-text pages only).
+    restore_mode: str = "color"
 
 
 settings = Settings()

@@ -18,8 +18,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from worker.pipeline.ocr import run_ocr, whiten_background
-from worker.pipeline.reconstruct import image_to_pdf, searchable_pdf
+from worker.pipeline.reconstruct import image_to_pdf, searchable_pdf, structure_to_json
 from worker.pipeline.restoration import restore
+from worker.pipeline.vl import (
+    VLProvider,
+    _normalize_structure,
+    _parse_json,
+    understand,
+)
 
 LINES = ["INVOICE No. 2026-0042", "Billed to: Acme Corp", "Total due: $1,337.00"]
 
@@ -86,8 +92,10 @@ def test_restore_produces_clean_page():
     out = restore(_bad_photo())
     gray = _decode_gray(out)
     assert gray.ndim == 2 and gray.size > 0
-    # restoration should flatten the page toward white (background dominates)
-    white_frac = float((gray >= 250).mean())
+    # restoration should flatten the page toward white (background dominates).
+    # >=240 (not 250) so this holds for the colour/greyscale modes too, not just
+    # the 1-bit binary mode.
+    white_frac = float((gray >= 240).mean())
     assert white_frac > 0.5, f"page not flattened (white_frac={white_frac:.2f})"
 
 
@@ -138,6 +146,88 @@ def test_real_ocr_reads_text_when_available():
     assert hits >= 2, f"weak recognition (hits={hits}): {joined!r}"
     assert result["languages"] == ["en"]
     assert all(0.0 <= w["confidence"] <= 1.0 for w in result["words"])
+
+
+# ─────────────────────────── M2: document understanding (VL) ───────────────────────────
+
+# Raw shape a Qwen-VL model is asked to return (pre-normalization).
+_MODEL_REPLY = {
+    "type": "INVOICE",
+    "title": "Invoice 2026-0042",
+    "summary": "An invoice billed to Acme Corp for $1,337.00.",
+    "sections": [
+        {
+            "heading": "Totals",
+            "level": 1,
+            "paragraphs": ["Total due: $1,337.00"],
+            "keyValues": [{"key": "Total due", "value": "$1,337.00"}],
+            "tables": [{"caption": None, "rows": [["Item", "Amount"]]}],
+        }
+    ],
+    "signatures": [{"kind": "stamp", "label": "PAID"}],
+    "metadata": {"invoiceNo": "2026-0042"},
+}
+
+
+class _FakeVL(VLProvider):
+    """In-memory VL backend so understanding is testable without a model server."""
+
+    def __init__(self, payload=None, raises=False):
+        self._payload = payload
+        self._raises = raises
+
+    def extract_structure(self, image_bytes, ocr):
+        if self._raises:
+            raise RuntimeError("model server down")
+        return self._payload
+
+
+def test_vl_normalize_coerces_to_document_structure():
+    s = _normalize_structure(_MODEL_REPLY)
+    assert s["type"] == "INVOICE"
+    assert s["title"] == "Invoice 2026-0042"
+    sec = s["sections"][0]
+    # grounded fields are wrapped {value, confidence}; table cells become TableCells
+    assert sec["heading"]["value"] == "Totals" and 0.0 <= sec["heading"]["confidence"] <= 1.0
+    kv = sec["keyValues"][0]
+    assert kv["key"] == "Total due" and kv["value"]["value"] == "$1,337.00"
+    assert sec["tables"][0]["rows"][0][0]["text"] == "Item"
+    assert s["signatures"][0]["kind"] == "stamp"
+    assert s["metadata"] == {"invoiceNo": "2026-0042"}
+
+
+def test_vl_normalize_rejects_bad_type_and_junk():
+    # unknown enum value -> UNKNOWN; non-dict reply -> empty structure
+    assert _normalize_structure({"type": "RANDOM_THING"})["type"] == "UNKNOWN"
+    junk = _normalize_structure("not a dict")
+    assert junk["type"] == "UNKNOWN" and junk["sections"] == [] and junk["metadata"] == {}
+
+
+def test_parse_json_strips_markdown_fences():
+    assert _parse_json('```json\n{"type": "FORM"}\n```') == {"type": "FORM"}
+    assert _parse_json('Here is the result: {"type": "ACT"} done') == {"type": "ACT"}
+    assert _parse_json("totally not json") == {}
+
+
+def test_vl_understand_uses_injected_provider():
+    expected = _normalize_structure(_MODEL_REPLY)
+    out = understand(b"\x89PNG-bytes", {"words": [{"text": "INVOICE"}]}, provider=_FakeVL(expected))
+    assert out == expected
+
+
+def test_vl_understand_degrades_when_provider_raises():
+    out = understand(b"\x89PNG-bytes", None, provider=_FakeVL(raises=True))
+    assert out["type"] == "UNKNOWN" and out["sections"] == [] and out["signatures"] == []
+
+
+def test_structure_to_json_is_valid_json():
+    import json
+
+    blob = structure_to_json(_normalize_structure(_MODEL_REPLY))
+    assert isinstance(blob, bytes)
+    parsed = json.loads(blob)
+    assert parsed["type"] == "INVOICE"
+    assert parsed["sections"][0]["keyValues"][0]["value"]["value"] == "$1,337.00"
 
 
 def test_image_only_pdf_fallback():

@@ -12,15 +12,22 @@ dependencies = [
     # Image + document processing (used from M1 onward)
     "opencv-python-headless>=4.10.0",
     "pillow>=10.4.0",
-    "numpy>=2.1.0",
+    # numpy must stay <2: paddlepaddle 2.6 is built against the numpy 1.x ABI and
+    # segfaults on import under numpy 2.x. cv2/PIL/pypdf are all fine on 1.26.
+    "numpy>=1.26.0,<2.0.0",
     "pdfplumber>=0.11.0",
     "pypdf>=5.0.0",
     "python-docx>=1.1.0",
     # Searchable PDF: invisible OCR text layer over the restored image (M1.2)
     "reportlab>=4.2.0",
-    # OCR (M1.2) — paddleocr pulls paddlepaddle. Pin to 2.x for the classic
-    # `.ocr(img, cls=True)` API the worker is written against.
+    # OCR (M1.2). Pin paddleocr to 2.x for the classic `.ocr(img, cls=True)` API
+    # the worker is written against. paddlepaddle (the inference backend) is NOT a
+    # hard dependency of paddleocr, so it must be listed explicitly or `import
+    # paddle` fails at runtime and OCR silently degrades to pass-through.
     "paddleocr>=2.8.0,<3.0.0",
+    "paddlepaddle>=2.6.0,<3.0.0",
+    # paddle imports pkg_resources at load; python:3.12-slim has no setuptools.
+    "setuptools>=70.0.0",
     # VL client talks to self-hosted Qwen via OpenAI-compatible vLLM endpoint (M2)
     "openai>=1.50.0",
     "weasyprint>=62.0",

@@ -47,7 +47,7 @@ def get_document(document_id: str) -> dict[str, Any] | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 'SELECT d.id, d."originalName", d."docType", d.title, d.summary, '
-                '       d."createdAt", j.status, j.progress, j.error '
+                '       d.structure, d."createdAt", j.status, j.progress, j.error '
                 "FROM documents d "
                 'JOIN processing_jobs j ON j."documentId" = d.id '
                 "WHERE d.id = %s",

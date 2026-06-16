@@ -2,10 +2,9 @@
 
 M1.1 (implemented): ImageRestoration + Reconstruction (image -> clean PDF).
 M1.2 (implemented): Ocr (PaddleOCR) -> text-mask cleanup -> searchable PDF.
-M2:   DocumentUnderstanding (Qwen2.5-VL) + rich, structure-aware reconstruction.
-
-Understanding is still a pass-through so the full async pipe runs end-to-end;
-it gets a real body in M2.
+M2   (implemented): DocumentUnderstanding (Qwen-VL via Ollama/vLLM) -> typed
+      DocumentStructure, plus a structured JSON export. Rich, structure-aware
+      HTML/DOCX reconstruction is still to come.
 """
 
 from __future__ import annotations
@@ -13,10 +12,12 @@ from __future__ import annotations
 import logging
 
 from worker import db, storage
+from worker.config import settings
 from worker.pipeline.base import PipelineContext, Stage
-from worker.pipeline.ocr import run_ocr, whiten_background
-from worker.pipeline.reconstruct import image_to_pdf, searchable_pdf
+from worker.pipeline.ocr import run_ocr
+from worker.pipeline.reconstruct import image_to_pdf, searchable_pdf, structure_to_json
 from worker.pipeline.restoration import restore
+from worker.pipeline.vl import EMPTY_STRUCTURE, understand
 
 log = logging.getLogger("worker.pipeline")
 
@@ -29,7 +30,7 @@ class ImageRestoration(Stage):
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
         raw = storage.get_bytes(ctx.source_key)
-        cleaned = restore(raw)
+        cleaned = restore(raw, max_side=settings.restore_max_side, mode=settings.restore_mode)
         restored_key = f"restored/{ctx.document_id}/page-1.png"
         storage.put_bytes(restored_key, cleaned, "image/png")
         ctx.restored_image_keys = [restored_key]
@@ -49,14 +50,10 @@ class Ocr(Stage):
             raise RuntimeError("no restored image to OCR")
         image = storage.get_bytes(ctx.restored_image_keys[0])
         ctx.ocr = run_ocr(image)
-
-        # OCR-driven background removal: whiten everything outside the text mask.
-        # Same geometry as the input, so the boxes stay valid for the text layer.
-        cleaned = whiten_background(image, ctx.ocr["words"])
-        clean_key = f"restored/{ctx.document_id}/page-1-clean.png"
-        storage.put_bytes(clean_key, cleaned, "image/png")
-        ctx.restored_image_keys = [clean_key]
-
+        # NB: we deliberately do NOT whiten outside the text mask — restoration
+        # already flattens the background, and mask-whitening shreds photos/maps
+        # (their light areas have no OCR boxes, so they get blown to noisy white).
+        # The clean restored page is what reconstruction draws under the text layer.
         log.info(
             "ocr done",
             extra={"document_id": ctx.document_id, "words": len(ctx.ocr["words"])},
@@ -65,14 +62,38 @@ class Ocr(Stage):
 
 
 class DocumentUnderstanding(Stage):
-    """Qwen2.5-VL 7B (self-hosted): typed structure (M2). Pass-through for now."""
+    """Qwen-VL (Ollama/vLLM): restored page + OCR -> typed DocumentStructure (M2).
+
+    Degrades to an UNKNOWN structure if the VL endpoint is unavailable, so the
+    job still finishes with a (searchable) PDF.
+    """
 
     status = "UNDERSTANDING"
     name = "understanding"
 
     def run(self, ctx: PipelineContext) -> PipelineContext:
-        log.info("understanding (pass-through, M2)", extra={"document_id": ctx.document_id})
-        ctx.structure = {"type": "UNKNOWN", "sections": [], "signatures": [], "metadata": {}}
+        structure = dict(EMPTY_STRUCTURE)
+        if ctx.restored_image_keys:
+            image = storage.get_bytes(ctx.restored_image_keys[0])
+            structure = understand(image, ctx.ocr)
+        ctx.structure = structure
+
+        db.set_understanding(
+            ctx.document_id,
+            doc_type=structure.get("type", "UNKNOWN"),
+            title=structure.get("title"),
+            summary=structure.get("summary"),
+            structure=structure,
+            metadata=structure.get("metadata") or {},
+        )
+        log.info(
+            "understanding done",
+            extra={
+                "document_id": ctx.document_id,
+                "doc_type": structure.get("type"),
+                "sections": len(structure.get("sections", [])),
+            },
+        )
         return ctx
 
 
@@ -93,6 +114,15 @@ class Reconstruction(Stage):
         db.add_export(ctx.document_id, "PDF", pdf_key, len(pdf))
         ctx.export_keys["PDF"] = pdf_key
         log.info("reconstructed pdf", extra={"document_id": ctx.document_id, "bytes": len(pdf)})
+
+        # Structured JSON artifact from the understanding stage (M2).
+        if ctx.structure is not None:
+            blob = structure_to_json(ctx.structure)
+            json_key = f"exports/{ctx.document_id}/document.json"
+            storage.put_bytes(json_key, blob, "application/json")
+            db.add_export(ctx.document_id, "JSON", json_key, len(blob))
+            ctx.export_keys["JSON"] = json_key
+            log.info("reconstructed json", extra={"document_id": ctx.document_id, "bytes": len(blob)})
         return ctx
 
 
