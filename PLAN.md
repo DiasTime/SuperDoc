@@ -16,14 +16,14 @@ vertical slices — each milestone is independently runnable and demoable.
 
 ## 0. Decisions locked in
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| AI vision model | **Self-host Qwen2.5-VL 7B** | Full control, privacy (handles passports/IDs/contracts), cheap at scale. Needs a GPU box (~16GB+ VRAM). |
-| OCR engine | PaddleOCR | Strong multilingual OCR with box + confidence output. |
-| Pipeline execution | **Async** (queue + workers) | 7B VL inference is seconds–minutes/page; never block an HTTP request. |
-| Reconstruction fidelity | readability > aesthetics > exact replication | Pixel-perfect = months. Semantic HTML→PDF = days and looks professional. |
-| Repo shape | **Monorepo** (pnpm workspaces + Python uv) | Shared types across front/back, one `docker compose up`. |
-| Storage | PostgreSQL (metadata) + S3-compatible object store (files/artifacts) | Don't store blobs in Postgres. MinIO locally, S3 in prod. |
+| Decision                | Choice                                                               | Rationale                                                                                               |
+| -------------------------| ----------------------------------------------------------------------| ---------------------------------------------------------------------------------------------------------|
+| AI vision model         | **Qwen-VL** (Ollama dev · vLLM prod)                                 | Self-hosted for full control + privacy (passports/IDs/contracts). Behind an OpenAI-compatible `VLProvider` so it's swappable: local Ollama (`ollama pull qwen2.5vl`) for dev, vLLM on a GPU box (~16GB+ VRAM) at scale. |
+| OCR engine              | PaddleOCR                                                            | Strong multilingual OCR with box + confidence output.                                                   |
+| Pipeline execution      | **Async** (queue + workers)                                          | 7B VL inference is seconds–minutes/page; never block an HTTP request.                                   |
+| Reconstruction fidelity | readability > aesthetics > exact replication                         | Pixel-perfect = months. Semantic HTML→PDF = days and looks professional.                                |
+| Repo shape              | **Monorepo** (pnpm workspaces + Python uv)                           | Shared types across front/back, one `docker compose up`.                                                |
+| Storage                 | PostgreSQL (metadata) + S3-compatible object store (files/artifacts) | Don't store blobs in Postgres. MinIO locally, S3 in prod.                                               |
 
 ### Architecture (target)
 
@@ -102,26 +102,27 @@ Goal: prove the full pipe end-to-end on one document type with deterministic sta
 - [x] Object storage client (put/get + presigned download) — MinIO/S3 (`app/storage.py`, `worker/storage.py`)
 - [x] `POST /upload` → magic-byte MIME sniff + size limit → store file, create `document` + `processing_job`
 - [x] `POST /process/:id` → enqueue job (Redis)
-- [x] Worker stage 1 — **Image restoration** (OpenCV):
-  - [x] grayscale path
-  - [x] denoise (Non-Local Means)
-  - [x] shadow removal (background division)
-  - [x] contrast normalization (CLAHE) + white-point flatten
-  - [x] document edge detection → perspective correction (4-point warp)
-  - [x] deskew (projection-profile search — robust across OpenCV versions)
-  - [ ] auto-orient (EXIF) + auto-crop — deferred to M1.2
+- [x] Worker stage 1 — **Image restoration** (OpenCV, `worker/pipeline/restoration.py`):
+  - [x] **page detection** — HSV-saturation mask (white paper vs. coloured desk) + largest connected component + 4 extreme corners → perspective warp + crop; Canny fallback
+  - [x] **deskew** (projection-profile search — robust across OpenCV versions)
+  - [x] edge-preserving **denoise** (bilateral) + local contrast (CLAHE) + unsharp
+  - [x] **white-balance** (per-channel illumination flatten + white-point lift) so grey/dim scans go truly white
+  - [x] **border-band cleanup** — whiten neutral grey background the crop included (low-saturation only, never colour content)
+  - [x] **three output modes** (`RESTORE_MODE`): **`color`** (default — keeps stamps/signatures/photos), `gray`, `binary`; working res up to `RESTORE_MAX_SIDE=3500`
+  - [ ] auto-orient (EXIF); robust crop when page ≈ background colour (needs AI doc-segmentation — see M2 note)
 - [x] Worker stage 4 — **Reconstruction (basic)**: restored page → clean PDF (Pillow)
 - [x] `GET /document/:id` (status + progress + exports), `GET /download/pdf/:id` (presigned redirect)
 - [x] Real async run verified: skewed/noisy/shadowed photo → deskewed clean PDF (visual before/after confirmed)
 
-### M1.2 — OCR + text-based reconstruction (code-complete, pending live verify)
+### M1.2 — OCR + text-based reconstruction (DONE ✅, verified live in the Docker worker)
 - [x] Worker stage 2 — **OCR** (PaddleOCR): text + boxes + confidence, geometry preserved (`worker/pipeline/ocr.py`; lazy import, degrades to pass-through if paddle is unavailable so the job still completes)
-- [x] OCR-driven background removal — whiten everything outside the (dilated) text mask to pure white (`whiten_background`)
 - [x] **Searchable PDF**: restored image + invisible, per-line OCR text layer, horizontally scaled to its box (`reconstruct.searchable_pdf`, reportlab); falls back to image-only PDF when OCR is empty
+- [x] **Verified live** — Docker worker reads a real page → selectable text layer (e.g. 2255 chars extracted), confirmed via `pypdf` round-trip
+- [~] `whiten_background` (OCR-driven mask whitening) — **removed from the pipeline**: it shredded photos/maps (light areas outside text boxes blew to noisy white). Restoration now flattens the background, so the clean restored page goes straight under the text layer. (Function kept + tested for reference.)
 - [ ] ordered text blocks → **semantic HTML → PDF/DOCX** — deferred to M2 (rich, structure-aware reconstruction)
 - [x] Web: upload (drag-drop/click) → live stage tracker (poll `GET /document/:id`) → result + PDF download (`apps/web/app/_components/Uploader.tsx`)
 
-**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back. **(M1.1 met for image-PDF; M1.2 adds the searchable text layer + web UI — code-complete; OCR text layer needs a live run in the Docker worker to confirm.)**
+**Definition of done:** upload a skewed phone photo → get a clean, readable PDF back. **MET** — verified end-to-end through the Docker worker (clean colour scan + selectable text).
 
 ---
 
@@ -129,20 +130,25 @@ Goal: prove the full pipe end-to-end on one document type with deterministic sta
 
 Goal: from "text on a page" to "typed, structured document".
 
-- [ ] Stand up **Qwen2.5-VL 7B** self-hosted (vLLM serving, GPU; quantized fallback)
-- [ ] VL provider interface in worker (so model is swappable / mockable in tests)
-- [ ] Stage 3 — **Document understanding**: OCR + image → structured JSON
-  - [ ] doc-type detection: contract, invoice, act, certificate, passport, ID, form, commercial offer
-  - [ ] hierarchy: title → sections → headings → paragraphs
-  - [ ] tables (cells, spans), key–value pairs, signatures, stamps
-  - [ ] **grounding:** every extracted field references an OCR box + confidence (anti-hallucination)
-- [ ] Metadata extraction + document summary
+- [x] VL provider interface in worker — swappable / mockable (`worker/pipeline/vl.py`: `VLProvider` + `OpenAICompatVL`; `understand()` degrades to UNKNOWN if the endpoint is down; image downscaled + OCR text capped to fit the context window)
+- [x] Serve via **Ollama** (dev) over the OpenAI-compatible API — **verified live** end-to-end in the Docker worker (`qwen2.5vl:3b`, ~150MB models pulled on first run)
+- [ ] Stand up **vLLM** (GPU, quantized fallback) for prod throughput — same `VLProvider`, just a different `VL_ENDPOINT`
+- [~] Stage 3 — **Document understanding**: OCR + image → structured JSON (`DocumentUnderstanding` stage live)
+  - [x] doc-type detection: contract, invoice, act, certificate, passport, ID, form, commercial offer (returns UNKNOWN honestly when none fit)
+  - [x] hierarchy: title → sections → headings → paragraphs
+  - [x] tables, key–value pairs, signatures/stamps (basic — cells/spans simplified)
+  - [ ] **grounding:** every field references an OCR box + confidence — fields carry confidence; box linkage still TODO
+- [x] Metadata extraction + document **summary** (verified: real summaries on live docs)
 - [ ] Stage 4+ — **Reconstruction (rich)**: structure-aware HTML/CSS templates per doc type
-- [ ] DOCX export (`python-docx`) + JSON export
-- [ ] `GET /download/docx/:id`, `GET /download/json/:id`
+- [x] **JSON export** — structured `DocumentStructure` artifact (`reconstruct.structure_to_json`, registered in `exports`)
+- [ ] DOCX export (`python-docx`)
+- [x] `GET /download/json/:id` (served by the existing `/download/{fmt}` handler) · [ ] `GET /download/docx/:id`
+- [x] API surfaces `structure` on `GET /document/:id`
 - [ ] Web: structured result view (sections, tables, confidence flags), all download formats
 
-**Definition of done:** upload an invoice photo → typed JSON with line items, a clean DOCX, a PDF, and a summary; low-confidence fields flagged.
+> **AI doc-segmentation (deferred):** robust page detection when the paper ≈ background colour (e.g. white sheet on a white desk) is beyond classical CV. A deep document-segmentation model is the fix; tested Qwen-VL 3B for corner grounding — not precise enough. Workaround for now: shoot on a contrasting surface.
+
+**Definition of done:** upload an invoice photo → typed JSON with line items, a clean DOCX, a PDF, and a summary; low-confidence fields flagged. **(JSON + colour PDF + summary done once a VL model is pulled; DOCX + rich HTML + box-grounding remain.)**
 
 ---
 
@@ -214,9 +220,11 @@ Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear,
 
 ## Current status
 
-- **Active milestone:** M1.2 — OCR + searchable PDF + web UI (**code-complete**, pending live OCR run).
-- **M0 DONE.** **M1.1 DONE** (verified end-to-end: upload → Redis → worker OpenCV restore → PDF → presigned download; visual before/after confirmed).
-- **M1.2 implemented:** PaddleOCR stage (text+boxes+confidence, geometry preserved), text-mask background whitening, searchable PDF (image + invisible text layer via reportlab), and the web upload→poll→download flow. Worker modules byte-compile + `ruff` clean; web `tsc --noEmit` green.
-- **Running locally now:** web :3000, api :8000, worker (Redis consumer), Postgres :5432, Redis + MinIO (docker).
-- **Next action:** bring up the Docker worker (`paddleocr` + `reportlab` now in `apps/worker/pyproject.toml`) and run a real photo through it to confirm the OCR text layer is selectable and the whitened background looks clean; then start M2 (Qwen2.5-VL understanding + rich HTML/DOCX/JSON reconstruction).
-- **Tooling note:** the worker AI stack (PaddleOCR) runs in the Docker worker image (python:3.12-slim) — native Windows + Python 3.14 lacks reliable wheels for paddle. The OCR stage degrades to a pass-through if paddle can't load, so the API/worker still run natively for non-OCR iteration.
+- **Active milestone:** M2 — Document understanding (in progress). Full pipe runs end-to-end in the Docker worker: **restore (colour) → OCR (PaddleOCR) → understand (Qwen-VL/Ollama) → reconstruct (searchable colour PDF + JSON)**.
+- **M0 DONE. M1.1 DONE. M1.2 DONE** (verified live: clean colour scan + selectable text layer).
+- **M2 so far:** swappable `VLProvider` (Ollama dev / vLLM prod) with graceful degrade; `DocumentUnderstanding` produces typed `DocumentStructure` (type, sections, key-values, signatures, metadata) + summary; structured JSON export; API surfaces `structure`. **Remaining:** DOCX export, rich structure-aware HTML reconstruction, box-grounding, vLLM prod path.
+- **Restoration overhaul (this cycle):** HSV page detection + perspective crop + deskew, three output modes (**colour default**, gray, binary), white-balance, edge-preserving denoise, border-band cleanup. Colour mode keeps stamps/signatures/photos.
+- **Running locally now:** web :3000, api :8000 (native); **Docker worker** `docres-worker-ocr` (OCR + VL); Postgres :5432 (native), Redis + MinIO (docker), Ollama :11434 (host, `qwen2.5vl:3b`).
+- **Worker deps note:** PaddleOCR needs `paddlepaddle` + `setuptools` explicitly, and **`numpy<2`** (paddle 2.6 segfaults on numpy 2.x). Runs in the Docker image (python:3.12-slim); native Windows/Python 3.14 lacks paddle wheels, so OCR/VL degrade gracefully when run natively.
+- **Docker worker wiring:** joins the `superdoc_default` compose network (reaches `redis`/`minio` by name) and uses `host.docker.internal` for native Postgres + Ollama; OCR models persisted in the `docres_paddle` volume.
+- **Next action:** DOCX export + rich HTML reconstruction; box-grounding of extracted fields; stand up vLLM for the prod VL path.

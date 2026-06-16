@@ -9,6 +9,7 @@ M2+:  structure-aware HTML -> PDF/DOCX.
 from __future__ import annotations
 
 import io
+import json
 import logging
 from typing import Any
 
@@ -19,6 +20,15 @@ log = logging.getLogger("worker.pipeline.reconstruct")
 _DPI = 150.0
 _PT_PER_PX = 72.0 / _DPI
 _INVISIBLE = 3  # PDF text render mode: no fill, no stroke
+
+
+def structure_to_json(structure: dict[str, Any]) -> bytes:
+    """Serialize the understanding output into a downloadable JSON artifact.
+
+    This is the M2 `GET /download/json/:id` payload — the typed
+    `DocumentStructure` (type, sections, key-values, signatures, metadata).
+    """
+    return json.dumps(structure, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def image_to_pdf(image_bytes: bytes) -> bytes:

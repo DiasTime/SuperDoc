@@ -67,6 +67,25 @@ def fail_job(document_id: str, error: str) -> None:
         )
 
 
+def set_understanding(
+    document_id: str,
+    doc_type: str,
+    title: str | None,
+    summary: str | None,
+    structure: dict[str, Any],
+    metadata: dict[str, Any],
+) -> None:
+    """Persist the understanding-stage output onto the document row (M2)."""
+    with _conn() as c:
+        c.execute(
+            'UPDATE documents '
+            'SET "docType"=%s::"DocumentType", title=%s, summary=%s, '
+            '    structure=%s, metadata=%s, "updatedAt"=now() '
+            "WHERE id=%s",
+            (doc_type, title, summary, Json(structure), Json(metadata), document_id),
+        )
+
+
 def add_export(document_id: str, fmt: str, artifact_key: str, size_bytes: int) -> None:
     """Idempotent upsert keyed on (documentId, format)."""
     with _conn() as c:

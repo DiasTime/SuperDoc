@@ -101,6 +101,7 @@ async def get_document(document_id: str) -> dict:
         "status": doc["status"],
         "progress": doc["progress"],
         "error": doc["error"],
+        "structure": doc["structure"],
         "exports": [
             {"format": e["format"], "url": f"/download/{e['format'].lower()}/{document_id}"}
             for e in doc["exports"]

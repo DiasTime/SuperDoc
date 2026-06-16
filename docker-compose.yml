@@ -79,6 +79,10 @@ services:
     build:
       context: ./apps/worker
     env_file: .env
+    # Reach the host's Ollama (M2 understanding) from inside the container as
+    # http://host.docker.internal:11434/v1 — works on Linux Docker too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
