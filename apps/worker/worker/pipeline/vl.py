@@ -20,6 +20,7 @@ import base64
 import io
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -306,6 +307,76 @@ def _normalize_structure(raw: Any) -> dict[str, Any]:
     }
 
 
+# ─────────────────────────── OCR-driven box grounding ───────────────────────────
+
+
+def _norm_text(text: str) -> str:
+    """Normalize for fuzzy matching: lowercase, strip punctuation, collapse whitespace."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", text.lower())).strip()
+
+
+def ground_structure(structure: dict[str, Any], ocr: dict[str, Any] | None) -> dict[str, Any]:
+    """Link extracted text fields to OCR word boxes by fuzzy text matching.
+
+    For each grounded value (keyValue, heading, table cell) we search the OCR
+    word list for the closest matching word and promote its confidence and box
+    to the field — giving downstream consumers a reliable source location rather
+    than the placeholder confidence emitted by the VL model.
+
+    Modifies `structure` in-place and returns it.
+    """
+    if not ocr or not ocr.get("words"):
+        return structure
+
+    words: list[dict[str, Any]] = ocr["words"]
+
+    # Build a lookup: normalized-text -> [(confidence, box), ...]
+    index: dict[str, list[tuple[float, list[Any]]]] = {}
+    for w in words:
+        key = _norm_text(w.get("text", ""))
+        if key:
+            index.setdefault(key, []).append((w.get("confidence", 0.9), w.get("box", [])))
+
+    def _best(text: str | None) -> tuple[float, list[Any]] | None:
+        if not text:
+            return None
+        norm = _norm_text(str(text))
+        if norm in index:
+            return max(index[norm], key=lambda e: e[0])
+        # Substring fallback: longest OCR token that appears in the extracted value
+        best: tuple[float, list[Any]] | None = None
+        best_len = 0
+        for key, entries in index.items():
+            if key and (key in norm or norm in key) and len(key) > best_len:
+                best_len = len(key)
+                best = max(entries, key=lambda e: e[0])
+        return best
+
+    def _update_grounded(g: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(g, dict):
+            return g
+        match = _best(g.get("value"))
+        if match:
+            return {"value": g["value"], "confidence": match[0], "box": match[1]}
+        return g
+
+    for section in structure.get("sections", []):
+        if section.get("heading"):
+            section["heading"] = _update_grounded(section["heading"])
+        for kv in section.get("keyValues", []):
+            if isinstance(kv.get("value"), dict):
+                kv["value"] = _update_grounded(kv["value"])
+        for tbl in section.get("tables", []):
+            for row in tbl.get("rows", []):
+                for i, cell in enumerate(row):
+                    if isinstance(cell, dict) and cell.get("text"):
+                        match = _best(cell["text"])
+                        if match:
+                            row[i] = {**cell, "confidence": match[0]}
+
+    return structure
+
+
 # ─────────────────────────── Stage entry point ───────────────────────────
 
 _provider: VLProvider | None = None
@@ -350,7 +421,8 @@ def understand(
     if provider is None:
         return dict(EMPTY_STRUCTURE)
     try:
-        return provider.extract_structure(image_bytes, ocr)
+        structure = provider.extract_structure(image_bytes, ocr)
+        return ground_structure(structure, ocr)
     except Exception:  # noqa: BLE001 — a bad page/model must not kill the job
         log.exception("VL understanding failed; returning UNKNOWN structure")
         return dict(EMPTY_STRUCTURE)
