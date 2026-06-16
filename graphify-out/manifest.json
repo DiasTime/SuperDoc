@@ -1,0 +1,202 @@
+{
+  "C:\\SuperDoc\\.claude\\settings.local.json": {
+    "mtime": 1781583451.822203,
+    "ast_hash": "674b57aaa78c2b0f49a5079bd0c7cae8",
+    "semantic_hash": "674b57aaa78c2b0f49a5079bd0c7cae8"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\__init__.py": {
+    "mtime": 1781525706.4432065,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\config.py": {
+    "mtime": 1781528423.8065195,
+    "ast_hash": "fdb9afa58087dc37847401b0e51fc4a9",
+    "semantic_hash": "fdb9afa58087dc37847401b0e51fc4a9"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\db.py": {
+    "mtime": 1781528503.9450488,
+    "ast_hash": "2621f39dfb00b32fd6e6b51a39f6983b",
+    "semantic_hash": "2621f39dfb00b32fd6e6b51a39f6983b"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\logging.py": {
+    "mtime": 1781525721.6374204,
+    "ast_hash": "6ede979c6f439961a89986fdce620a1b",
+    "semantic_hash": "6ede979c6f439961a89986fdce620a1b"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\main.py": {
+    "mtime": 1781528495.2368872,
+    "ast_hash": "b2cf1f568b52467c3a254f472e7fa077",
+    "semantic_hash": "b2cf1f568b52467c3a254f472e7fa077"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\queue.py": {
+    "mtime": 1781528448.5808952,
+    "ast_hash": "8e12a31bcb62d8ea8464e5507112f53c",
+    "semantic_hash": "8e12a31bcb62d8ea8464e5507112f53c"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\security.py": {
+    "mtime": 1781528477.649285,
+    "ast_hash": "66cd29347b47585c3fa87acff3674985",
+    "semantic_hash": "66cd29347b47585c3fa87acff3674985"
+  },
+  "C:\\SuperDoc\\apps\\api\\app\\storage.py": {
+    "mtime": 1781528431.0137982,
+    "ast_hash": "533fb870a8973d2c98cf5af7712b3722",
+    "semantic_hash": "533fb870a8973d2c98cf5af7712b3722"
+  },
+  "C:\\SuperDoc\\apps\\web\\app\\_components\\Uploader.tsx": {
+    "mtime": 1781583356.2764733,
+    "ast_hash": "f9117dc436729030dead2e163d187670",
+    "semantic_hash": "f9117dc436729030dead2e163d187670"
+  },
+  "C:\\SuperDoc\\apps\\web\\app\\layout.tsx": {
+    "mtime": 1781525857.6927295,
+    "ast_hash": "2b6293fd1a56e0e1637bf4525a180145",
+    "semantic_hash": "2b6293fd1a56e0e1637bf4525a180145"
+  },
+  "C:\\SuperDoc\\apps\\web\\app\\page.tsx": {
+    "mtime": 1781583356.277224,
+    "ast_hash": "3d31504d5880d68349ef60790c4fafa8",
+    "semantic_hash": "3d31504d5880d68349ef60790c4fafa8"
+  },
+  "C:\\SuperDoc\\apps\\web\\next-env.d.ts": {
+    "mtime": 1781526570.010401,
+    "ast_hash": "90426577ad8f38459f3e566411c85589",
+    "semantic_hash": "90426577ad8f38459f3e566411c85589"
+  },
+  "C:\\SuperDoc\\apps\\web\\next.config.mjs": {
+    "mtime": 1781526608.7575529,
+    "ast_hash": "c1c046ea3215ae6d437d2ac0cbda918c",
+    "semantic_hash": "c1c046ea3215ae6d437d2ac0cbda918c"
+  },
+  "C:\\SuperDoc\\apps\\web\\package.json": {
+    "mtime": 1781526353.039884,
+    "ast_hash": "36bbf273f07e040207deae63730d344a",
+    "semantic_hash": "36bbf273f07e040207deae63730d344a"
+  },
+  "C:\\SuperDoc\\apps\\web\\postcss.config.mjs": {
+    "mtime": 1781525842.81206,
+    "ast_hash": "e5f291ae7dc8b9e462f4bc232849464c",
+    "semantic_hash": "e5f291ae7dc8b9e462f4bc232849464c"
+  },
+  "C:\\SuperDoc\\apps\\web\\tailwind.config.ts": {
+    "mtime": 1781525848.0959594,
+    "ast_hash": "73e037fe9f60e9a2bb026e625efed21c",
+    "semantic_hash": "73e037fe9f60e9a2bb026e625efed21c"
+  },
+  "C:\\SuperDoc\\apps\\web\\tsconfig.json": {
+    "mtime": 1781525839.027667,
+    "ast_hash": "eabe23a0c2c44889c29b3c46939499c3",
+    "semantic_hash": "eabe23a0c2c44889c29b3c46939499c3"
+  },
+  "C:\\SuperDoc\\apps\\worker\\tests\\test_pipeline.py": {
+    "mtime": 1781583356.2794771,
+    "ast_hash": "9326e74384a5ca92b1c46ab18a2e9c94",
+    "semantic_hash": "9326e74384a5ca92b1c46ab18a2e9c94"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\__init__.py": {
+    "mtime": 1781525760.432657,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\config.py": {
+    "mtime": 1781525767.5448103,
+    "ast_hash": "3e92f028a86c2220400b9872b1441947",
+    "semantic_hash": "3e92f028a86c2220400b9872b1441947"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\db.py": {
+    "mtime": 1781528353.4434988,
+    "ast_hash": "b7226db20f5b8e93c751b9fec91c1f75",
+    "semantic_hash": "b7226db20f5b8e93c751b9fec91c1f75"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\main.py": {
+    "mtime": 1781528606.7256377,
+    "ast_hash": "f2d25ce1de51745b2abe3780793c74b6",
+    "semantic_hash": "f2d25ce1de51745b2abe3780793c74b6"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\__init__.py": {
+    "mtime": 1781528405.105881,
+    "ast_hash": "da60db31629abfcb5767fc42ce9eaa9c",
+    "semantic_hash": "da60db31629abfcb5767fc42ce9eaa9c"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\base.py": {
+    "mtime": 1781525782.4883785,
+    "ast_hash": "a7f2fd016447c4697d3808b152b84c2f",
+    "semantic_hash": "a7f2fd016447c4697d3808b152b84c2f"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\ocr.py": {
+    "mtime": 1781583356.2802322,
+    "ast_hash": "e3ca1578d050b08638ef974ccaac1a33",
+    "semantic_hash": "e3ca1578d050b08638ef974ccaac1a33"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\reconstruct.py": {
+    "mtime": 1781583356.2809765,
+    "ast_hash": "d8cf38cd390da8cf44710c333508dc17",
+    "semantic_hash": "d8cf38cd390da8cf44710c333508dc17"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\restoration.py": {
+    "mtime": 1781528809.8418796,
+    "ast_hash": "757f29d5eddf04e0570b6f715d02510f",
+    "semantic_hash": "757f29d5eddf04e0570b6f715d02510f"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\pipeline\\stages.py": {
+    "mtime": 1781583356.2809765,
+    "ast_hash": "6b1ab29b38028efa729831bcdcf4ae3e",
+    "semantic_hash": "6b1ab29b38028efa729831bcdcf4ae3e"
+  },
+  "C:\\SuperDoc\\apps\\worker\\worker\\storage.py": {
+    "mtime": 1781528339.33364,
+    "ast_hash": "9e52b7d10e95f89c8fac00cc7875d2c3",
+    "semantic_hash": "9e52b7d10e95f89c8fac00cc7875d2c3"
+  },
+  "C:\\SuperDoc\\infra\\download_model.sh": {
+    "mtime": 1781525927.3949778,
+    "ast_hash": "99c909602fa13e0b6cf7a9898de2073b",
+    "semantic_hash": "99c909602fa13e0b6cf7a9898de2073b"
+  },
+  "C:\\SuperDoc\\package.json": {
+    "mtime": 1781525635.9233177,
+    "ast_hash": "e032fcb7a8a267f770f43f8b15f10ea7",
+    "semantic_hash": "e032fcb7a8a267f770f43f8b15f10ea7"
+  },
+  "C:\\SuperDoc\\packages\\shared-types\\package.json": {
+    "mtime": 1781525668.2796817,
+    "ast_hash": "58e2056e6b08b7409d88e4f6c09f3781",
+    "semantic_hash": "58e2056e6b08b7409d88e4f6c09f3781"
+  },
+  "C:\\SuperDoc\\packages\\shared-types\\src\\index.ts": {
+    "mtime": 1781525692.055108,
+    "ast_hash": "1db743acd7d8289b07081ad4dbf779ae",
+    "semantic_hash": "1db743acd7d8289b07081ad4dbf779ae"
+  },
+  "C:\\SuperDoc\\packages\\shared-types\\tsconfig.json": {
+    "mtime": 1781525673.2903414,
+    "ast_hash": "a0a8b16dfbdd28ed391ffd59239d0e5d",
+    "semantic_hash": "a0a8b16dfbdd28ed391ffd59239d0e5d"
+  },
+  "C:\\SuperDoc\\PLAN.md": {
+    "mtime": 1781583356.275723,
+    "ast_hash": "f81799f04a5b7c19a06c69adc0265c9f",
+    "semantic_hash": "f81799f04a5b7c19a06c69adc0265c9f"
+  },
+  "C:\\SuperDoc\\README.md": {
+    "mtime": 1781525629.2270167,
+    "ast_hash": "60dd9288e6a8dcef7b235f236165c0b0",
+    "semantic_hash": "60dd9288e6a8dcef7b235f236165c0b0"
+  },
+  "C:\\SuperDoc\\docker-compose.yml": {
+    "mtime": 1781525913.1963534,
+    "ast_hash": "c588fd3cd3b9441c107478d254e968b7",
+    "semantic_hash": "c588fd3cd3b9441c107478d254e968b7"
+  },
+  "C:\\SuperDoc\\infra\\README.md": {
+    "mtime": 1781525921.5773373,
+    "ast_hash": "312db6be2bb48c36c369281bbd582637",
+    "semantic_hash": "312db6be2bb48c36c369281bbd582637"
+  },
+  "C:\\SuperDoc\\pnpm-workspace.yaml": {
+    "mtime": 1781525642.4053333,
+    "ast_hash": "6e87156489fb0290b9bd67bf690989ea",
+    "semantic_hash": "6e87156489fb0290b9bd67bf690989ea"
+  }
+}
