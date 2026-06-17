@@ -133,22 +133,22 @@ Goal: from "text on a page" to "typed, structured document".
 - [x] VL provider interface in worker — swappable / mockable (`worker/pipeline/vl.py`: `VLProvider` + `OpenAICompatVL`; `understand()` degrades to UNKNOWN if the endpoint is down; image downscaled + OCR text capped to fit the context window)
 - [x] Serve via **Ollama** (dev) over the OpenAI-compatible API — **verified live** end-to-end in the Docker worker (`qwen2.5vl:3b`, ~150MB models pulled on first run)
 - [ ] Stand up **vLLM** (GPU, quantized fallback) for prod throughput — same `VLProvider`, just a different `VL_ENDPOINT`
-- [~] Stage 3 — **Document understanding**: OCR + image → structured JSON (`DocumentUnderstanding` stage live)
+- [x] Stage 3 — **Document understanding**: OCR + image → structured JSON (`DocumentUnderstanding` stage live)
   - [x] doc-type detection: contract, invoice, act, certificate, passport, ID, form, commercial offer (returns UNKNOWN honestly when none fit)
   - [x] hierarchy: title → sections → headings → paragraphs
   - [x] tables, key–value pairs, signatures/stamps (basic — cells/spans simplified)
-  - [ ] **grounding:** every field references an OCR box + confidence — fields carry confidence; box linkage still TODO
+  - [x] **grounding:** `ground_structure()` links extracted text to OCR word boxes + promotes OCR confidence to each `Grounded<T>` field (`vl.ground_structure`)
 - [x] Metadata extraction + document **summary** (verified: real summaries on live docs)
-- [ ] Stage 4+ — **Reconstruction (rich)**: structure-aware HTML/CSS templates per doc type
+- [x] Stage 4+ — **Reconstruction (rich)**: `structure_to_html()` + WeasyPrint `structure_to_rich_pdf()` (falls back to searchable PDF when UNKNOWN/WeasyPrint unavailable)
 - [x] **JSON export** — structured `DocumentStructure` artifact (`reconstruct.structure_to_json`, registered in `exports`)
-- [ ] DOCX export (`python-docx`)
-- [x] `GET /download/json/:id` (served by the existing `/download/{fmt}` handler) · [ ] `GET /download/docx/:id`
+- [x] **DOCX export** (`python-docx`) — `structure_to_docx()`: title, summary, metadata table, sections (headings, key-value tables, paragraph text, data tables), signatures; low-confidence fields highlighted amber
+- [x] `GET /download/json/:id` · `GET /download/docx/:id` (served by the existing `/download/{fmt}` handler)
 - [x] API surfaces `structure` on `GET /document/:id`
-- [ ] Web: structured result view (sections, tables, confidence flags), all download formats
+- [x] Web: structured result view — doc-type badge (colour-coded), title, summary, key-facts panel, section list with confidence dots, signature chips, all download format buttons (`Uploader.tsx`)
 
 > **AI doc-segmentation (deferred):** robust page detection when the paper ≈ background colour (e.g. white sheet on a white desk) is beyond classical CV. A deep document-segmentation model is the fix; tested Qwen-VL 3B for corner grounding — not precise enough. Workaround for now: shoot on a contrasting surface.
 
-**Definition of done:** upload an invoice photo → typed JSON with line items, a clean DOCX, a PDF, and a summary; low-confidence fields flagged. **(JSON + colour PDF + summary done once a VL model is pulled; DOCX + rich HTML + box-grounding remain.)**
+**Definition of done:** upload an invoice photo → typed JSON with line items, a clean DOCX, a PDF, and a summary; low-confidence fields flagged. **MET** — full pipe: restore → OCR → VL understanding → rich PDF (WeasyPrint) + DOCX + JSON; OCR-driven box grounding on all `Grounded<T>` fields; structured result view in the web UI.
 
 ---
 
@@ -220,11 +220,11 @@ Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear,
 
 ## Current status
 
-- **Active milestone:** M2 — Document understanding (in progress). Full pipe runs end-to-end in the Docker worker: **restore (colour) → OCR (PaddleOCR) → understand (Qwen-VL/Ollama) → reconstruct (searchable colour PDF + JSON)**.
-- **M0 DONE. M1.1 DONE. M1.2 DONE** (verified live: clean colour scan + selectable text layer).
-- **M2 so far:** swappable `VLProvider` (Ollama dev / vLLM prod) with graceful degrade; `DocumentUnderstanding` produces typed `DocumentStructure` (type, sections, key-values, signatures, metadata) + summary; structured JSON export; API surfaces `structure`. **Remaining:** DOCX export, rich structure-aware HTML reconstruction, box-grounding, vLLM prod path.
-- **Restoration overhaul (this cycle):** HSV page detection + perspective crop + deskew, three output modes (**colour default**, gray, binary), white-balance, edge-preserving denoise, border-band cleanup. Colour mode keeps stamps/signatures/photos.
+- **Active milestone:** M3 — Frontend UX (world-class). M2 is **COMPLETE**.
+- **M0 DONE. M1.1 DONE. M1.2 DONE. M2 DONE.**
+- **M2 complete:** VLProvider (Ollama dev / vLLM prod) + graceful degrade; `DocumentUnderstanding` stage; OCR-driven box grounding (`ground_structure`); structure-aware HTML + WeasyPrint rich PDF (`structure_to_rich_pdf`); DOCX export (`structure_to_docx`, python-docx); JSON export; all three `/download/{pdf,docx,json}` routes live; structured result view in the web UI (type badge, title, summary, key-facts panel, section list with confidence dots, signature chips, all download buttons).
+- **Restoration overhaul:** HSV page detection + perspective crop + deskew, three output modes (**colour default**, gray, binary), white-balance, edge-preserving denoise, border-band cleanup. Colour mode keeps stamps/signatures/photos.
 - **Running locally now:** web :3000, api :8000 (native); **Docker worker** `docres-worker-ocr` (OCR + VL); Postgres :5432 (native), Redis + MinIO (docker), Ollama :11434 (host, `qwen2.5vl:3b`).
 - **Worker deps note:** PaddleOCR needs `paddlepaddle` + `setuptools` explicitly, and **`numpy<2`** (paddle 2.6 segfaults on numpy 2.x). Runs in the Docker image (python:3.12-slim); native Windows/Python 3.14 lacks paddle wheels, so OCR/VL degrade gracefully when run natively.
 - **Docker worker wiring:** joins the `superdoc_default` compose network (reaches `redis`/`minio` by name) and uses `host.docker.internal` for native Postgres + Ollama; OCR models persisted in the `docres_paddle` volume.
-- **Next action:** DOCX export + rich HTML reconstruction; box-grounding of extracted fields; stand up vLLM for the prod VL path.
+- **Next action:** M3 — design system tokens, landing hero (before/after reveal), dashboard, upload UX, result split-view, pricing.

@@ -73,7 +73,7 @@ export default function Home() {
       </section>
 
       <footer className="mt-32 border-t border-white/5 py-8 text-center text-xs text-white/30">
-        Document Resurrection AI — M1.2: OCR + searchable PDF. See PLAN.md for the roadmap.
+        Document Resurrection AI — M2: document intelligence (typed structure · DOCX · rich PDF). See PLAN.md for the roadmap.
       </footer>
     </main>
   );

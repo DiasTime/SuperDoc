@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   JOB_STAGES,
   type DocumentResponse,
+  type DocumentStructure,
   type JobStatus,
   type UploadResponse,
 } from "@docres/shared-types";
@@ -13,7 +14,6 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_MS = 1500;
 const ACCEPT = "image/jpeg,image/png,image/webp,image/tiff,image/bmp";
 
-// Stages shown in the live tracker (skip QUEUED/COMPLETED bookends).
 const TRACKED = JOB_STAGES.filter(
   (s) => s.status !== "QUEUED" && s.status !== "COMPLETED",
 );
@@ -22,6 +22,138 @@ function stageIndex(status: JobStatus): number {
   const i = TRACKED.findIndex((s) => s.status === status);
   if (status === "COMPLETED") return TRACKED.length;
   return i;
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  INVOICE: "bg-blue-500/20 text-blue-300 border-blue-400/30",
+  CONTRACT: "bg-emerald-500/20 text-emerald-300 border-emerald-400/30",
+  ACT: "bg-amber-500/20 text-amber-300 border-amber-400/30",
+  CERTIFICATE: "bg-violet-500/20 text-violet-300 border-violet-400/30",
+  PASSPORT: "bg-pink-500/20 text-pink-300 border-pink-400/30",
+  ID_CARD: "bg-cyan-500/20 text-cyan-300 border-cyan-400/30",
+  FORM: "bg-slate-500/20 text-slate-300 border-slate-400/30",
+  COMMERCIAL_OFFER: "bg-orange-500/20 text-orange-300 border-orange-400/30",
+  UNKNOWN: "bg-white/10 text-white/40 border-white/10",
+};
+
+const FORMAT_LABELS: Record<string, string> = {
+  PDF: "Clean PDF",
+  DOCX: "Editable DOCX",
+  JSON: "Structured JSON",
+};
+
+function typeLabel(t: string) {
+  return t.replace(/_/g, " ");
+}
+
+function ConfidenceDot({ conf }: { conf: number }) {
+  if (conf >= 0.85) return null;
+  const color = conf < 0.7 ? "bg-red-400" : "bg-yellow-400";
+  const title = conf < 0.7 ? "Low confidence" : "Medium confidence";
+  return (
+    <span
+      className={`inline-block h-1.5 w-1.5 rounded-full ${color} ml-1 align-middle`}
+      title={title}
+    />
+  );
+}
+
+function StructurePreview({ s }: { s: DocumentStructure }) {
+  const sections = s.sections ?? [];
+  const metadata = s.metadata ?? {};
+  const sigs = s.signatures ?? [];
+  const metaEntries = Object.entries(metadata).slice(0, 6);
+
+  const tableCount = sections.reduce(
+    (acc, sec) => acc + (sec.tables?.length ?? 0),
+    0,
+  );
+  const kvCount = sections.reduce(
+    (acc, sec) => acc + (sec.keyValues?.length ?? 0),
+    0,
+  );
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* Metadata key-values */}
+      {metaEntries.length > 0 && (
+        <div className="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/30">
+            Key facts
+          </div>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            {metaEntries.map(([k, v]) => (
+              <span key={k} className="contents">
+                <dt className="truncate font-medium text-white/50">{k}</dt>
+                <dd className="truncate text-white/80">{v}</dd>
+              </span>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {/* Section list */}
+      {sections.length > 0 && (
+        <div className="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/30">
+            {sections.length} section{sections.length !== 1 ? "s" : ""}
+            {tableCount > 0 && ` · ${tableCount} table${tableCount !== 1 ? "s" : ""}`}
+            {kvCount > 0 && ` · ${kvCount} field${kvCount !== 1 ? "s" : ""}`}
+          </div>
+          <ul className="space-y-0.5">
+            {sections.slice(0, 5).map((sec, i) => {
+              const headingText = sec.heading?.value ?? "";
+              const conf = sec.heading?.confidence ?? 1;
+              return (
+                <li
+                  key={i}
+                  className="flex items-center gap-1 text-xs text-white/60"
+                >
+                  <span className="text-white/25">§</span>
+                  <span className="truncate">
+                    {headingText || <em className="text-white/30">untitled</em>}
+                  </span>
+                  <ConfidenceDot conf={conf} />
+                </li>
+              );
+            })}
+            {sections.length > 5 && (
+              <li className="text-xs text-white/30">
+                +{sections.length - 5} more…
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Signatures / stamps */}
+      {sigs.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {sigs.map((sig, i) => (
+            <span
+              key={i}
+              className="rounded border border-dashed border-white/20 px-2 py-0.5 text-[10px] text-white/40"
+            >
+              {sig.kind?.toUpperCase() ?? "SIGNATURE"}
+              {sig.label ? ` — ${sig.label}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Confidence legend */}
+      <div className="flex items-center gap-3 text-[10px] text-white/30">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-yellow-400" />
+          medium confidence
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400" />
+          low confidence
+        </span>
+      </div>
+    </div>
+  );
 }
 
 type Phase = "idle" | "working" | "done" | "error";
@@ -40,7 +172,6 @@ export default function Uploader() {
   }, []);
 
   const poll = useCallback(async (id: string) => {
-    // Poll /document/:id until the job reaches a terminal state.
     while (true) {
       const res = await fetch(`${API}/document/${id}`);
       if (!res.ok) throw new Error(`status check failed (${res.status})`);
@@ -71,8 +202,11 @@ export default function Uploader() {
         }
         const { documentId }: UploadResponse = await up.json();
 
-        const proc = await fetch(`${API}/process/${documentId}`, { method: "POST" });
-        if (!proc.ok) throw new Error(`could not start processing (${proc.status})`);
+        const proc = await fetch(`${API}/process/${documentId}`, {
+          method: "POST",
+        });
+        if (!proc.ok)
+          throw new Error(`could not start processing (${proc.status})`);
 
         await poll(documentId);
       } catch (e) {
@@ -163,7 +297,9 @@ export default function Uploader() {
                     </span>
                     <span
                       className={`text-sm ${
-                        state === "pending" ? "text-white/35" : "text-white/80"
+                        state === "pending"
+                          ? "text-white/35"
+                          : "text-white/80"
                       }`}
                     >
                       {stage.label}
@@ -199,15 +335,36 @@ export default function Uploader() {
             exit={{ opacity: 0 }}
             className="rounded-2xl border border-white/10 bg-white/5 p-6 text-left"
           >
-            <div className="text-base font-medium text-white/90">
-              Done — {doc.originalName}
+            {/* Header: type badge + title */}
+            <div className="flex flex-wrap items-start gap-2">
+              {doc.docType && doc.docType !== "UNKNOWN" && (
+                <span
+                  className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${TYPE_COLORS[doc.docType] ?? TYPE_COLORS.UNKNOWN}`}
+                >
+                  {typeLabel(doc.docType)}
+                </span>
+              )}
+              <span className="text-sm font-medium text-white/80">
+                {doc.title ?? doc.originalName}
+              </span>
             </div>
-            <div className="mt-1 text-xs text-white/40">
-              Your clean, searchable document is ready.
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
+
+            {/* Summary */}
+            {doc.summary && (
+              <p className="mt-2 text-xs leading-relaxed text-white/50">
+                {doc.summary}
+              </p>
+            )}
+
+            {/* Structured preview (M2) */}
+            {doc.structure && <StructurePreview s={doc.structure} />}
+
+            {/* Download buttons */}
+            <div className="mt-5 flex flex-wrap gap-2">
               {doc.exports.length === 0 && (
-                <span className="text-sm text-white/50">No exports produced.</span>
+                <span className="text-sm text-white/50">
+                  No exports produced.
+                </span>
               )}
               {doc.exports.map((ex) => (
                 <a
@@ -215,15 +372,16 @@ export default function Uploader() {
                   href={`${API}${ex.url}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:bg-white/90"
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90"
                 >
-                  Download {ex.format}
+                  {FORMAT_LABELS[ex.format] ?? `Download ${ex.format}`}
                 </a>
               ))}
             </div>
+
             <button
               onClick={reset}
-              className="mt-5 text-sm text-white/50 underline-offset-4 transition hover:text-white/80 hover:underline"
+              className="mt-5 text-sm text-white/40 underline-offset-4 transition hover:text-white/70 hover:underline"
             >
               Process another
             </button>
@@ -241,7 +399,9 @@ export default function Uploader() {
             <div className="text-base font-medium text-red-200">
               Couldn&apos;t process that
             </div>
-            <div className="mt-1 break-words text-sm text-red-200/70">{error}</div>
+            <div className="mt-1 break-words text-sm text-red-200/70">
+              {error}
+            </div>
             <button
               onClick={reset}
               className="mt-5 rounded-lg border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/5"
