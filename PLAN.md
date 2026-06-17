@@ -156,12 +156,10 @@ Goal: from "text on a page" to "typed, structured document".
 
 Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear, Vercel-aesthetic.
 
-- [ ] Design system: tokens, typography, motion language (Framer Motion)
-- [ ] Landing (hero with before/after reveal, the "bad photo → source file" moment)
+- [x] **Landing redesign**: Before/After comparison (bad photo card vs clean document mockup), "How it works" 4-step pipeline cards, "What you get" output badges (PDF/DOCX/JSON), ambient dual-glow background; footer updated
+- [x] **Upload UX**: image preview thumbnail (shown during working and done states), paste-from-clipboard support (`document.addEventListener('paste')`), camera capture button (mobile `capture="environment"`), enlarged drop zone with upload icon, drag-feedback scale + border animation
 - [ ] Dashboard (document history, status, search)
-- [ ] Upload (drag-drop, paste, camera, multi-file, instant preview)
-- [ ] Processing (live stage progress: restoring → reading → understanding → rebuilding)
-- [ ] Results (split before/after, structured view, edit-before-export, downloads)
+- [ ] Results (split before/after, edit-before-export)
 - [ ] Pricing + Settings
 - [ ] Empty states, error states, optimistic UI, a11y pass
 
