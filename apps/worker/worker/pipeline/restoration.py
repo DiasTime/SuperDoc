@@ -42,9 +42,15 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
     return rect
 
 
-def _page_quad_bright(img: np.ndarray, min_area: float = 0.15) -> np.ndarray | None:
+def _page_quad_bright(
+    img: np.ndarray, min_area: float = 0.15
+) -> tuple[np.ndarray, np.ndarray] | None:
     """Find the page as the largest desaturated-bright region (white paper vs. a
     coloured surface like a wooden desk), then its 4 corners.
+
+    Returns ``(quad, mask)`` where ``mask`` is the filled page region — the warp
+    uses it to whiten anything that isn't the real page (e.g. a desk wedge pulled
+    in when an off-frame corner is extrapolated).
 
     Saturation is the key discriminator: a brightness-only mask let specular wood
     highlights bridge into the page and drag the crop onto the desk. Paper is
@@ -67,15 +73,111 @@ def _page_quad_bright(img: np.ndarray, min_area: float = 0.15) -> np.ndarray | N
     if stats[idx, cv2.CC_STAT_AREA] < min_area * area:
         return None
     comp = np.where(labels == idx, 255, 0).astype(np.uint8)
-    comp = cv2.morphologyEx(comp, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))  # fill dark-image holes
+    # Fill internal holes (dark photos/maps printed on the page) by flood-filling
+    # the background from a corner and OR-ing back the enclosed holes. Unlike a big
+    # MORPH_CLOSE, this never bulges the outer page boundary into the desk — so the
+    # detected edges hug the real page and the perspective corners stay accurate.
+    h, w = comp.shape
+    flood = comp.copy()
+    cv2.floodFill(flood, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 255)
+    comp = comp | cv2.bitwise_not(flood)
+    comp = cv2.morphologyEx(comp, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))  # de-speckle edges
 
     contours, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    pts = max(contours, key=cv2.contourArea).reshape(-1, 2).astype("float32")
+    page = max(contours, key=cv2.contourArea)
+    return _refine_quad(page, _quad_from_contour(page)), comp
+
+
+def _quad_from_contour(page: np.ndarray) -> np.ndarray:
+    """Best 4 corners of the page contour.
+
+    A photo of a flat page on a desk is a convex quadrilateral with mild
+    perspective (a trapezoid). The true corners come from polygon-approximating
+    the convex hull — `approxPolyDP` lands on the actual corners, so the
+    perspective warp straightens the page with the correct aspect ratio and clips
+    no text. The old "extreme x±y points" heuristic put corners on the long edges
+    of a rotated page, which warped to the wrong ratio and left residual tilt +
+    cut a corner. Falls back to minAreaRect, then extreme points, if approximation
+    doesn't yield a clean quad.
+    """
+    hull = cv2.convexHull(page)
+    peri = cv2.arcLength(hull, True)
+    for frac in (0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10):
+        approx = cv2.approxPolyDP(hull, frac * peri, True)
+        if len(approx) == 4:
+            return approx.reshape(4, 2).astype("float32")
+
+    # No clean quad: if the contour fills a rotated rectangle well, use that
+    # (pure rotation, no perspective); otherwise the extreme-point fallback.
+    box = cv2.boxPoints(cv2.minAreaRect(page)).astype("float32")
+    if cv2.contourArea(page) / max(cv2.contourArea(box.astype(np.int32)), 1.0) >= 0.90:
+        return box
+    pts = page.reshape(-1, 2).astype("float32")
     ssum, sdiff = pts.sum(axis=1), pts[:, 1] - pts[:, 0]
     return np.array(
         [pts[np.argmin(ssum)], pts[np.argmin(sdiff)], pts[np.argmax(ssum)], pts[np.argmax(sdiff)]],
         dtype="float32",
     )
+
+
+def _refine_quad(contour: np.ndarray, quad: np.ndarray) -> np.ndarray:
+    """Refine page corners by fitting a straight line to each of the 4 edges and
+    intersecting adjacent lines.
+
+    The mask boundary is jagged, and a corner that falls outside the photo frame
+    (the page runs off the edge of the shot) is reported by the contour as a point
+    *on* the frame edge — which warps to a sheared page (a printed map comes out as
+    a parallelogram). Fitting a line to each whole edge and intersecting recovers
+    the true corner, even off-frame, so the warp squares the page. Falls back to
+    the contour quad whenever an edge lacks support or the refit is degenerate.
+    """
+    quad = _order_points(quad)  # tl, tr, br, bl
+    pts = contour.reshape(-1, 2).astype(np.float32)
+    edges = [(quad[0], quad[1]), (quad[1], quad[2]), (quad[2], quad[3]), (quad[3], quad[0])]
+
+    lines: list[np.ndarray] = []
+    for a, b in edges:
+        ab = b - a
+        length = float(np.hypot(ab[0], ab[1])) + 1e-9
+        t = (pts - a) @ ab / (length * length)
+        perp = np.abs(ab[0] * (pts[:, 1] - a[1]) - ab[1] * (pts[:, 0] - a[0])) / length
+        # the clean middle of the edge only: drop corner regions (t outside 0.2–0.8)
+        # and points that don't lie along this edge (the opposite edge / stray blobs)
+        keep = (t > 0.20) & (t < 0.80) & (perp < max(length * 0.04, 12.0))
+        group = pts[keep]
+        if len(group) < 10:
+            return quad
+        lines.append(cv2.fitLine(group, cv2.DIST_HUBER, 0, 0.01, 0.01).ravel())
+
+    def intersect(l1: np.ndarray, l2: np.ndarray) -> np.ndarray | None:
+        vx1, vy1, x1, y1 = l1
+        vx2, vy2, x2, y2 = l2
+        det = vx2 * vy1 - vy2 * vx1
+        if abs(det) < 1e-6:
+            return None
+        s = (vx2 * (y2 - y1) - vy2 * (x2 - x1)) / det
+        return np.array([x1 + vx1 * s, y1 + vy1 * s], dtype=np.float32)
+
+    # corner i = intersection of the edge before it and the edge after it
+    corners = [
+        intersect(lines[3], lines[0]), intersect(lines[0], lines[1]),
+        intersect(lines[1], lines[2]), intersect(lines[2], lines[3]),
+    ]
+    if any(c is None for c in corners):
+        return quad
+    refined = np.array(corners, dtype=np.float32)
+
+    # sanity guard: accept the refit only if it stays a sane quad — similar area
+    # and no corner flung absurdly far (allows real off-frame extrapolation, blocks
+    # blow-ups from a bad line fit).
+    approx_area = cv2.contourArea(quad)
+    if approx_area <= 0:
+        return quad
+    diag = float(np.hypot(*(quad[2] - quad[0]))) or 1.0
+    moved = np.linalg.norm(refined - quad, axis=1).max()
+    if not (0.7 < cv2.contourArea(refined) / approx_area < 1.6) or moved > 0.25 * diag:
+        return quad
+    return refined
 
 
 def _page_quad_canny(gray: np.ndarray) -> np.ndarray | None:
@@ -93,14 +195,17 @@ def _page_quad_canny(gray: np.ndarray) -> np.ndarray | None:
     return None
 
 
-def _detect_page(img: np.ndarray) -> np.ndarray | None:
-    quad = _page_quad_bright(img)
-    if quad is None:
-        quad = _page_quad_canny(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-    return quad
+def _detect_page(img: np.ndarray) -> tuple[np.ndarray, np.ndarray | None] | None:
+    found = _page_quad_bright(img)
+    if found is not None:
+        return found  # (quad, mask)
+    quad = _page_quad_canny(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    return (quad, None) if quad is not None else None
 
 
-def _four_point_warp(img: np.ndarray, quad: np.ndarray) -> np.ndarray:
+def _four_point_warp(
+    img: np.ndarray, quad: np.ndarray, page_mask: np.ndarray | None = None
+) -> np.ndarray:
     rect = _order_points(quad)
     (tl, tr, br, bl) = rect
     width = int(max(np.linalg.norm(br - bl), np.linalg.norm(tr - tl)))
@@ -112,7 +217,29 @@ def _four_point_warp(img: np.ndarray, quad: np.ndarray) -> np.ndarray:
         dtype="float32",
     )
     matrix = cv2.getPerspectiveTransform(rect, dst)
-    return cv2.warpPerspective(img, matrix, (width, height))
+    # White border fill: when a refined corner lies outside the photo (the page ran
+    # off the edge of the shot), the missing wedge reads as clean white paper
+    # instead of a black triangle.
+    warped = cv2.warpPerspective(
+        img, matrix, (width, height),
+        flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255),
+    )
+    # Whiten anything that isn't the detected page. When a corner is extrapolated
+    # off-frame, the quad covers a triangle of desk next to the true page corner;
+    # that desk is *outside* the page mask, so warping the mask and clearing
+    # everything beyond it erases the wedge/smudge while leaving page content (the
+    # map sits inside the mask via the earlier hole-fill, so it is never touched).
+    if page_mask is not None:
+        # Use the mask boundary as-is (no dilation): the page edge is white margin,
+        # so whitening right up to it removes the desk smudge cleanly, while the map
+        # sits well inside the mask and is untouched. Erode a hair to kill the 1-px
+        # warp seam at the boundary.
+        mask = cv2.erode(page_mask, np.ones((3, 3), np.uint8))
+        warped_mask = cv2.warpPerspective(
+            mask, matrix, (width, height), flags=cv2.INTER_NEAREST
+        )
+        warped[warped_mask < 128] = 255
+    return warped
 
 
 def _inset(img: np.ndarray, frac: float = 0.018) -> np.ndarray:
@@ -150,12 +277,22 @@ def _estimate_skew(gray: np.ndarray, search: float = 12.0, step: float = 0.5) ->
 
 
 def _rotate(img: np.ndarray, angle: float) -> np.ndarray:
-    """Rotate to correct residual skew (works on colour or greyscale)."""
+    """Rotate to correct residual skew (works on colour or greyscale).
+
+    The output canvas is *expanded* to fit the rotated image so a corner is never
+    pushed out of frame and clipped — the old fixed-size rotate cut a triangle off
+    each corner (e.g. bottom-right text) whenever it fired on a near-full-frame
+    page. The new white corners are cosmetic and get cleaned by the border passes.
+    """
     h, w = img.shape[:2]
     matrix = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+    cos, sin = abs(matrix[0, 0]), abs(matrix[0, 1])
+    new_w, new_h = int(h * sin + w * cos), int(h * cos + w * sin)
+    matrix[0, 2] += (new_w - w) / 2
+    matrix[1, 2] += (new_h - h) / 2
     border = (255, 255, 255) if img.ndim == 3 else 255
     return cv2.warpAffine(
-        img, matrix, (w, h),
+        img, matrix, (new_w, new_h),
         flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=border,
     )
 
@@ -183,17 +320,37 @@ def _color_enhance(bgr: np.ndarray) -> np.ndarray:
     while coloured ink keeps its hue, denoises, sharpens, and lifts saturation a
     little so faded stamps/ink read clearly. The most faithful "looks like the
     original" output.
+
+    Continuous-tone regions (printed photos, maps, dark fills) are *protected*: the
+    per-channel divide that crisps text-on-paper amplifies local contrast, which
+    shreds a grey photo into salt-and-pepper noise. So the divide is only applied
+    where the local background is bright (real paper); where it is dark — a printed
+    image — the original tones are kept and merely illumination-corrected. A
+    feathered mask blends the two so there is no visible seam. On a pure-text page
+    the mask is empty and the result is identical to the plain flatten.
     """
-    channels = []
+    bgr = cv2.bilateralFilter(bgr, 5, 50, 50)  # edge-preserving denoise first
+
+    norm_channels, bg_channels = [], []
     for c in cv2.split(bgr):
         background = cv2.medianBlur(cv2.dilate(c, np.ones((9, 9), np.uint8)), 31)
-        channels.append(cv2.divide(c, background, scale=255))
-    out = cv2.merge(channels)
-    out = cv2.bilateralFilter(out, 5, 50, 50)  # edge-preserving denoise
+        bg_channels.append(background)
+        norm_channels.append(cv2.divide(c, background, scale=255))
+    norm = cv2.merge(norm_channels)  # crisp paper/text (but shreds photos)
+
+    # "photo" = where the local background is dark -> a printed image, not paper.
+    bg_luma = cv2.cvtColor(cv2.merge(bg_channels), cv2.COLOR_BGR2GRAY)
+    photo = (bg_luma < 160).astype(np.float32)
+    photo = np.clip(cv2.GaussianBlur(photo, (0, 0), 9), 0, 1)[..., None]  # feather
+    out = (norm.astype(np.float32) * (1.0 - photo)
+           + bgr.astype(np.float32) * photo).astype(np.uint8)
+
     # white-balance: lift the paper white-point so a uniformly grey/dim scan goes
-    # white (the per-channel divide alone can leave a grey cast on flat scans).
+    # white. Measured on paper (non-photo) pixels only, so a big dark image can't
+    # drag the white-point down and over-brighten the page.
     luma = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
-    wp = float(np.percentile(luma, 80))
+    paper_luma = luma[photo[..., 0] < 0.5]
+    wp = float(np.percentile(paper_luma if paper_luma.size else luma, 80))
     if wp > 1:
         out = np.clip(out.astype(np.float32) * (250.0 / wp), 0, 255).astype(np.uint8)
     blur = cv2.GaussianBlur(out, (0, 0), 1.5)
@@ -208,11 +365,14 @@ def _color_enhance(bgr: np.ndarray) -> np.ndarray:
     return out
 
 
-def _clean_border_bands(bgr: np.ndarray, lo: int = 190, hi: int = 243,
+def _clean_border_bands(bgr: np.ndarray, lo: int = 150, hi: int = 243,
                         min_area: float = 0.004) -> np.ndarray:
     """Whiten neutral grey background bands/wedges that the crop included and that
     touch a border. Restricted to low-saturation (neutral) blobs, so coloured
-    content — stamps, signatures, photos — is never touched.
+    content — stamps, signatures, photos — is never touched. The grey floor is low
+    enough to catch a soft desk shadow along a page edge (which can fade to mid
+    grey), but the border-touching + min-area + neutral constraints keep real
+    content safe: a printed photo/map sits in the interior, not on the border.
     """
     h, w = bgr.shape[:2]
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -282,9 +442,10 @@ def restore(image_bytes: bytes, max_side: int = 3500, mode: str = "color") -> by
 
     img = _resize_max(img, max_side)
 
-    quad = _detect_page(img)
-    if quad is not None:
-        img = _inset(_four_point_warp(img, quad))
+    detection = _detect_page(img)
+    if detection is not None:
+        quad, page_mask = detection
+        img = _inset(_four_point_warp(img, quad, page_mask=page_mask))
 
     angle = _estimate_skew(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
     if abs(angle) >= 0.3:

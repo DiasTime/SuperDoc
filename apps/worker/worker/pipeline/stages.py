@@ -19,7 +19,6 @@ from worker.pipeline.reconstruct import (
     searchable_pdf,
     structure_to_docx,
     structure_to_json,
-    structure_to_rich_pdf,
 )
 from worker.pipeline.restoration import restore
 from worker.pipeline.vl import EMPTY_STRUCTURE, understand
@@ -114,14 +113,14 @@ class Reconstruction(Stage):
         image = storage.get_bytes(ctx.restored_image_keys[0])
         words = (ctx.ocr or {}).get("words", [])
 
-        # PDF: prefer structure-aware WeasyPrint render; fall back to searchable image PDF.
-        pdf: bytes | None = None
-        if ctx.structure is not None:
-            pdf = structure_to_rich_pdf(ctx.structure)
-            if pdf:
-                log.info("used rich PDF (WeasyPrint)", extra={"document_id": ctx.document_id})
-        if not pdf:
-            pdf = searchable_pdf(image, words) if words else image_to_pdf(image)
+        # PDF: the faithful, searchable scan — the restored page image plus an
+        # invisible OCR text layer. This keeps the real document intact (maps,
+        # photos, stamps, signatures) and never injects VL commentary. The
+        # structure-only rich reconstruction dropped the page image and prepended
+        # an "UNKNOWN" title + summary, so it is no longer used for the PDF; the
+        # structured intelligence is still exported as JSON + DOCX and surfaced in
+        # the web result panel.
+        pdf = searchable_pdf(image, words) if words else image_to_pdf(image)
         pdf_key = f"exports/{ctx.document_id}/document.pdf"
         storage.put_bytes(pdf_key, pdf, "application/pdf")
         db.add_export(ctx.document_id, "PDF", pdf_key, len(pdf))
