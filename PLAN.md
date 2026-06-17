@@ -157,11 +157,12 @@ Goal: from "text on a page" to "typed, structured document".
 Goal: the experience feels magical. Apple-simple, Linear-polished, Stripe-clear, Vercel-aesthetic.
 
 - [x] **Landing redesign**: Before/After comparison (bad photo card vs clean document mockup), "How it works" 4-step pipeline cards, "What you get" output badges (PDF/DOCX/JSON), ambient dual-glow background; footer updated
-- [x] **Upload UX**: image preview thumbnail (shown during working and done states), paste-from-clipboard support (`document.addEventListener('paste')`), camera capture button (mobile `capture="environment"`), enlarged drop zone with upload icon, drag-feedback scale + border animation
+- [x] **Upload UX**: enlarged drop zone with upload icon, drag scale + border animation, paste-from-clipboard, camera capture (mobile `capture="environment"`); `start()` compresses + stores thumbnail to `sessionStorage` then navigates to `/document/{id}`
+- [x] **Results page** (`/document/[id]`): split layout — PDF iframe (left, `h-full`, follows presigned redirect) vs structured result panel (right: type badge, title, summary, metadata table, section cards with confidence dots, signature chips, downloads); live stage tracker + progress bar while processing; error state; `use(params)` for Next.js 15 async params
 - [ ] Dashboard (document history, status, search)
-- [ ] Results (split before/after, edit-before-export)
+- [ ] Edit-before-export (results panel inline editing)
 - [ ] Pricing + Settings
-- [ ] Empty states, error states, optimistic UI, a11y pass
+- [ ] Empty states, a11y pass
 
 **Definition of done:** a first-time user completes upload→download without instructions and says "wow".
 
